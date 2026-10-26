@@ -12,7 +12,15 @@ import {
   AnalysisRecordItem, 
   DatabaseStats 
 } from './types';
-import { ShieldCheck, Heart } from 'lucide-react';
+import { 
+  safeFetchJson, 
+  runClientSideAnalysis, 
+  getLocalStorageRecords, 
+  deleteLocalStorageRecord, 
+  toggleLocalStorageStar, 
+  computeLocalStats 
+} from './utils/clientAnalyzer';
+import { ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -25,24 +33,39 @@ export default function App() {
   const [records, setRecords] = useState<AnalysisRecordItem[]>([]);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
 
+  // Fetch records with graceful fallback
   const fetchRecords = async () => {
     try {
-      const [historyRes, statsRes] = await Promise.all([
-        fetch('/api/history'),
-        fetch('/api/stats')
-      ]);
+      const historyResult = await safeFetchJson<{ records: AnalysisRecordItem[] }>('/api/history');
+      const statsResult = await safeFetchJson<DatabaseStats>('/api/stats');
 
-      if (historyRes.ok) {
-        const hData = await historyRes.json();
-        setRecords(hData.records || []);
+      const localRecords = getLocalStorageRecords();
+
+      if (historyResult.ok && historyResult.data?.records) {
+        // Merge server records with any locally saved ones
+        const serverRecords = historyResult.data.records;
+        const combined = [...serverRecords];
+        for (const loc of localRecords) {
+          if (!combined.some((s) => s.id === loc.id)) {
+            combined.push(loc);
+          }
+        }
+        setRecords(combined);
+      } else {
+        // Server returned non-JSON (e.g. 404 on Vercel) or failed: use local records
+        setRecords(localRecords);
       }
 
-      if (statsRes.ok) {
-        const sData = await statsRes.json();
-        setStats(sData);
+      if (statsResult.ok && statsResult.data) {
+        setStats(statsResult.data);
+      } else {
+        setStats(computeLocalStats(localRecords));
       }
     } catch (err) {
-      console.error('Could not load saved records:', err);
+      console.warn('Could not load remote records, using local storage:', err);
+      const localRecords = getLocalStorageRecords();
+      setRecords(localRecords);
+      setStats(computeLocalStats(localRecords));
     }
   };
 
@@ -50,7 +73,7 @@ export default function App() {
     fetchRecords();
   }, []);
 
-  // Handle scam analysis submission
+  // Handle scam analysis submission with safe fallback
   const handleAnalyze = async (payload: {
     text: string;
     companyName?: string;
@@ -62,25 +85,38 @@ export default function App() {
     setError(null);
 
     try {
-      const response = await fetch('/api/analyze', {
+      // 1. Attempt server-side analysis
+      const res = await safeFetchJson<AnalysisResponse>('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Sorry, we could not check this advertisement. Please try again.');
+      if (res.ok && res.data) {
+        // Server analyzed successfully
+        setCurrentResult(res.data);
+        setActiveTab('check');
+        fetchRecords();
+        return;
       }
 
-      setCurrentResult(data);
-      // Switch to Check a Job tab to display the results
+      // 2. If server endpoint is not found (e.g. Vercel 404 or static hosting), run local analysis
+      console.log('[App] Server endpoint was not available, running built-in detection system.');
+      const localAnalysis = runClientSideAnalysis(payload);
+      setCurrentResult(localAnalysis);
       setActiveTab('check');
       fetchRecords();
     } catch (err: any) {
       console.error('Check error:', err);
-      setError(err.message || 'Sorry, we could not check this advertisement right now. Please try again in a few moments.');
+      // Attempt local analysis before failing
+      try {
+        const localAnalysis = runClientSideAnalysis(payload);
+        setCurrentResult(localAnalysis);
+        setActiveTab('check');
+        fetchRecords();
+      } catch {
+        setError('Sorry, we couldn\'t check this advertisement right now. Please try again in a few moments.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -89,11 +125,14 @@ export default function App() {
   // Delete saved record
   const handleDeleteRecord = async (id: string) => {
     try {
-      const res = await fetch(`/api/history/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setRecords((prev) => prev.filter((r) => r.id !== id));
-        fetchRecords();
-      }
+      // Delete from local storage
+      deleteLocalStorageRecord(id);
+
+      // Attempt to delete from server as well
+      await safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      fetchRecords();
     } catch (err) {
       console.error('Failed to delete record:', err);
     }
@@ -102,14 +141,17 @@ export default function App() {
   // Toggle bookmark on record
   const handleToggleStar = async (id: string) => {
     try {
-      const res = await fetch(`/api/history/${id}/star`, { method: 'PATCH' });
-      if (res.ok) {
-        setRecords((prev) =>
-          prev.map((r) =>
-            r.id === id ? { ...r, is_starred: r.is_starred ? 0 : 1 } : r
-          )
-        );
-      }
+      // Toggle in local storage
+      toggleLocalStorageStar(id);
+
+      // Attempt to update on server as well
+      await safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'PATCH' });
+
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, is_starred: r.is_starred ? 0 : 1 } : r
+        )
+      );
     } catch (err) {
       console.error('Failed to update bookmark:', err);
     }

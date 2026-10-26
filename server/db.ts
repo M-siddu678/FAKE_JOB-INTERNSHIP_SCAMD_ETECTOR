@@ -22,14 +22,19 @@ export interface AnalysisRecord {
 }
 
 let db: Database | null = null;
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isVercel ? path.join('/tmp', 'data') : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'scam_detection.db');
 
 export async function initDb(): Promise<Database> {
   if (db) return db;
 
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Could not create data directory, proceeding in-memory:', err);
   }
 
   const SQL = await initSqlJs();
