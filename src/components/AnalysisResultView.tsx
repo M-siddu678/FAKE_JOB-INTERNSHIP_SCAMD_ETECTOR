@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   AlertTriangle, 
@@ -12,10 +12,16 @@ import {
   Briefcase, 
   Mail, 
   Radio, 
-  Lock,
-  ExternalLink,
-  Info
+  Lock, 
+  ExternalLink, 
+  RotateCcw,
+  Cpu,
+  Terminal,
+  Zap,
+  Flame,
+  FileText
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { AnalysisResponse, FlaggedIndicator } from '../types';
 
 interface AnalysisResultViewProps {
@@ -31,352 +37,350 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
   onOpenReport,
   onReset,
   onToggleStar,
-  isStarred
+  isStarred = false
 }) => {
-  const [copiedEmail, setCopiedEmail] = useState(false);
-  const { finalVerdict, heuristicEngine, metadata, recordId, timestamp } = result;
+  const [copiedText, setCopiedText] = useState(false);
+  const [animatedScore, setAnimatedScore] = useState(0);
 
-  // Map internal categories to simple user-friendly labels
+  const { finalVerdict, heuristicEngine, aiModelEngine, metadata, recordId, timestamp, raw_text } = result;
+  const targetScore = finalVerdict.riskScore;
+
+  // Animate the risk score counter smoothly from 0 to targetScore
+  useEffect(() => {
+    let start = 0;
+    const duration = 900; // ms
+    const stepTime = 16;
+    const totalSteps = Math.ceil(duration / stepTime);
+    let step = 0;
+
+    const timer = setInterval(() => {
+      step++;
+      const progress = step / totalSteps;
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(eased * targetScore);
+      setAnimatedScore(current);
+
+      if (step >= totalSteps) {
+        setAnimatedScore(targetScore);
+        clearInterval(timer);
+      }
+    }, stepTime);
+
+    return () => clearInterval(timer);
+  }, [targetScore]);
+
+  // Color mappings per user requirements: Green = Low Risk, Amber = Suspicious, Red = High Risk
   const riskCategory = finalVerdict.riskCategory;
   const isHighRisk = riskCategory === 'Fraudulent';
-  const isNeedsChecking = riskCategory === 'Suspicious';
+  const isSuspicious = riskCategory === 'Suspicious';
   const isLowRisk = riskCategory === 'Genuine';
 
-  const friendlyRiskLabel = isHighRisk 
-    ? 'High Risk' 
-    : isNeedsChecking 
-    ? 'Needs Careful Checking' 
-    : 'Low Risk';
-
-  const friendlyRiskExplanation = isHighRisk
-    ? 'Contains major warning signs often seen in scams, such as asking for payment, promising unrealistic earnings, or refusing real interviews.'
-    : isNeedsChecking
-    ? 'Contains some unusual details such as personal email addresses, rush deadlines, or unverified claims. Double-check before responding.'
-    : 'Looks like standard recruitment with typical company procedures and no fee requests.';
-
-  const categoryTheme = isHighRisk
-    ? {
-        bg: 'bg-rose-950/20',
-        border: 'border-rose-600/40',
-        badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-        textColor: 'text-rose-400',
-        barColor: 'bg-rose-500'
-      }
-    : isNeedsChecking
-    ? {
-        bg: 'bg-amber-950/20',
-        border: 'border-amber-600/40',
-        badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-        textColor: 'text-amber-400',
-        barColor: 'bg-amber-500'
-      }
-    : {
-        bg: 'bg-emerald-950/20',
-        border: 'border-emerald-600/40',
-        badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-        textColor: 'text-emerald-400',
-        barColor: 'bg-emerald-500'
-      };
-
-  const hrEmailTemplate = `To: The Human Resources / Careers Department
-Subject: Checking the authenticity of a job offer - [Your Name]
-
-Dear Hiring Team,
-
-I recently received a message regarding an employment opportunity for the position of "${metadata.jobTitle || 'Job / Internship'}".
-The message came from: ${metadata.senderInfo || 'Recruiter'} through ${metadata.channel || 'Direct message'}.
-
-Could you please confirm if this message was officially sent by your company?
-
-Thank you for your time and help.
-Sincerely,
-[Your Full Name]
-[Your Phone Number]`;
-
-  const handleCopyEmail = () => {
-    navigator.clipboard.writeText(hrEmailTemplate);
-    setCopiedEmail(true);
-    setTimeout(() => setCopiedEmail(false), 2000);
+  const theme = isHighRisk ? {
+    label: 'High Risk',
+    badgeText: 'CRITICAL THREAT / HIGH RISK',
+    textColor: 'text-rose-400',
+    borderColor: 'border-rose-500/40',
+    bgCard: 'bg-rose-950/20',
+    glowShadow: 'shadow-[0_0_30px_rgba(244,63,94,0.25)]',
+    ringColor: 'stroke-rose-500',
+    barColor: 'bg-rose-500',
+    subtext: 'Critical danger: Scam warning indicators detected. Do not pay money or share private identification.'
+  } : isSuspicious ? {
+    label: 'Suspicious',
+    badgeText: 'SUSPICIOUS / NEEDS VERIFICATION',
+    textColor: 'text-amber-400',
+    borderColor: 'border-amber-500/40',
+    bgCard: 'bg-amber-950/20',
+    glowShadow: 'shadow-[0_0_30px_rgba(245,158,11,0.25)]',
+    ringColor: 'stroke-amber-500',
+    barColor: 'bg-amber-500',
+    subtext: 'Irregularities detected. Verify employer credentials and physical office before proceeding.'
+  } : {
+    label: 'Low Risk',
+    badgeText: 'AUTHENTIC / LOW RISK',
+    textColor: 'text-emerald-400',
+    borderColor: 'border-emerald-500/40',
+    bgCard: 'bg-emerald-950/20',
+    glowShadow: 'shadow-[0_0_30px_rgba(16,185,129,0.25)]',
+    ringColor: 'stroke-emerald-500',
+    barColor: 'bg-emerald-500',
+    subtext: 'Standard recruitment practices identified. Always confirm offers on the company official careers portal.'
   };
 
+  const handleCopySummary = () => {
+    const textToCopy = `[Scam Checker Threat Audit]\nRole: ${metadata?.jobTitle || 'Job Offer'}\nCompany: ${metadata?.companyName || 'Unspecified'}\nThreat Level: ${theme.label} (${targetScore}/100)\nSummary: ${finalVerdict.summary}`;
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2000);
+  };
+
+  // Circular gauge math
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (animatedScore / 100) * circumference;
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* 1. YOUR RESULTS BANNER */}
-      <div className={`rounded-2xl p-6 sm:p-8 border ${categoryTheme.border} ${categoryTheme.bg} shadow-xl relative`}>
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className="space-y-6"
+    >
+      {/* Top Threat Banner Card */}
+      <div className={`relative rounded-3xl p-6 sm:p-8 ${theme.bgCard} border ${theme.borderColor} ${theme.glowShadow} backdrop-blur-2xl overflow-hidden`}>
+        {/* Ambient Top Glow Line */}
+        <div className={`absolute top-0 left-0 right-0 h-1 ${theme.barColor} opacity-80`} />
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${
-              isHighRisk ? 'bg-rose-500/20 text-rose-400' : isNeedsChecking ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
-            } border ${categoryTheme.border}`}>
-              {isHighRisk ? (
-                <ShieldAlert className="w-8 h-8" />
-              ) : isNeedsChecking ? (
-                <AlertTriangle className="w-8 h-8" />
-              ) : (
-                <ShieldCheck className="w-8 h-8" />
-              )}
+          <div className="space-y-3 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wider uppercase border ${
+                isHighRisk ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' :
+                isSuspicious ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
+                'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              }`}>
+                {isHighRisk ? <ShieldAlert className="w-3.5 h-3.5" /> :
+                 isSuspicious ? <AlertTriangle className="w-3.5 h-3.5" /> :
+                 <ShieldCheck className="w-3.5 h-3.5" />}
+                <span>{theme.badgeText}</span>
+              </span>
+
+              <span className="text-xs font-mono text-slate-400">
+                AUDIT_ID: {recordId}
+              </span>
             </div>
 
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase font-bold tracking-wider text-slate-400">
-                  Your Results
-                </span>
-                <span className="text-slate-600">•</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${categoryTheme.badge}`}>
-                  {friendlyRiskLabel}
-                </span>
-              </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              {metadata?.jobTitle || 'Job / Internship Advertisement'}
+            </h2>
 
-              <h3 className="mt-1.5 text-2xl font-bold text-white tracking-tight">
-                Risk Level: {friendlyRiskLabel}
-              </h3>
-
-              <p className="mt-1.5 text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                {friendlyRiskExplanation}
-              </p>
+            <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-300">
+              <span className="flex items-center gap-1 text-cyan-300">
+                <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                {metadata?.companyName || 'Unspecified Company'}
+              </span>
+              <span>•</span>
+              <span>Via: {metadata?.channel || 'Direct Message'}</span>
+              <span>•</span>
+              <span className="text-slate-400">{new Date(timestamp).toLocaleString()}</span>
             </div>
+
+            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed max-w-2xl pt-1">
+              {finalVerdict.summary}
+            </p>
           </div>
 
-          {/* Estimated Risk Score Dial */}
-          <div className="bg-slate-900/95 rounded-2xl p-4 sm:p-5 border border-slate-800 flex-shrink-0 flex items-center justify-between lg:flex-col lg:justify-center text-center gap-3 min-w-[210px]">
-            <div className="text-left lg:text-center">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Estimated Risk Score
-              </span>
-              <span className={`text-3xl sm:text-4xl font-extrabold ${categoryTheme.textColor}`}>
-                {finalVerdict.riskScore} <span className="text-sm font-normal text-slate-500">/ 100</span>
-              </span>
-            </div>
-
-            <div className="w-32 lg:w-40">
-              <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700/60">
-                <div
-                  className={`h-full ${categoryTheme.barColor} transition-all duration-700`}
-                  style={{ width: `${Math.max(finalVerdict.riskScore, 5)}%` }}
+          {/* Animated Risk Score Circular Gauge */}
+          <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-[#050816]/80 border border-cyan-500/20 backdrop-blur-md shadow-xl flex-shrink-0">
+            <div className="relative w-32 h-32 flex items-center justify-center">
+              <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 120 120">
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={radius}
+                  className="stroke-slate-800"
+                  strokeWidth="10"
+                  fill="transparent"
                 />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={radius}
+                  className={`${theme.ringColor} transition-all duration-300`}
+                  strokeWidth="10"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  fill="transparent"
+                />
+              </svg>
+
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span className={`text-3xl font-mono font-extrabold tracking-tight ${theme.textColor}`}>
+                  {animatedScore}
+                </span>
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+                  Threat / 100
+                </span>
               </div>
-              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-                <span>0 (Low)</span>
-                <span>100 (High)</span>
-              </div>
+            </div>
+
+            <div className="mt-2 text-center">
+              <span className={`text-xs font-mono font-bold uppercase ${theme.textColor}`}>
+                {theme.label}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Note on score estimation */}
-        <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center gap-2 text-xs text-slate-400">
-          <Info className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-          <span>
-            Please note: This score is an estimate based on detected warning signs, not absolute proof that an offer is genuine or fraudulent. Always verify employers yourself.
-          </span>
-        </div>
-
-        {/* Toolbar */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="text-slate-400 text-xs">
-            Checked on {new Date(timestamp).toLocaleDateString()} at {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </div>
-
+        {/* Action Buttons Row */}
+        <div className="mt-6 pt-5 border-t border-cyan-500/15 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {onToggleStar && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all border border-slate-700 hover:border-cyan-400/50"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Check Another Offer</span>
+            </button>
+
+            {onToggleStar && recordId && (
               <button
                 type="button"
                 onClick={() => onToggleStar(recordId)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                  isStarred
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                  isStarred 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]' 
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                 }`}
               >
-                <Bookmark className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400' : ''}`} />
-                <span>{isStarred ? 'Saved Bookmark' : 'Bookmark This'}</span>
+                <Bookmark className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400 text-amber-400' : ''}`} />
+                <span>{isStarred ? 'Bookmarked' : 'Bookmark'}</span>
               </button>
             )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all border border-slate-700"
+            >
+              {copiedText ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedText ? 'Copied' : 'Copy Summary'}</span>
+            </button>
 
             <button
               type="button"
               onClick={onOpenReport}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition-all shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(56,189,248,0.25)] border border-cyan-400/30"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print or Save Summary</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onReset}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-all"
-            >
-              Check Another Job
+              <span>Print Security Audit</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. JOB OFFER DETAILS */}
-      <div className="bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-blue-400" />
-          <span>Job Offer Details</span>
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[11px] font-medium text-slate-500 block">Company Name:</span>
-            <p className="font-semibold text-slate-200 mt-0.5 truncate">
-              {metadata.companyName || 'Not specified in message'}
-            </p>
+      {/* Grid: Warning Signs & Security Recommendations */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Warning Flags Card */}
+        <div className="rounded-2xl p-6 bg-[#090d24]/85 border border-cyan-500/20 backdrop-blur-xl shadow-lg space-y-4">
+          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-3">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-rose-400" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                Detected Warning Flags ({(heuristicEngine?.flags || []).length})
+              </h3>
+            </div>
+            <span className="text-[11px] font-mono text-slate-400">Threat Indicators</span>
           </div>
 
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[11px] font-medium text-slate-500 block">Job Role:</span>
-            <p className="font-semibold text-slate-200 mt-0.5 truncate">
-              {metadata.jobTitle || 'Not specified in message'}
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[11px] font-medium text-slate-500 block">Recruiter Contact:</span>
-            <p className="font-semibold text-slate-200 mt-0.5 truncate">
-              {metadata.senderInfo || (heuristicEngine.extractedEntities.emails[0] || 'Not specified')}
-            </p>
-          </div>
-
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[11px] font-medium text-slate-500 block">Where Received:</span>
-            <p className="font-semibold text-slate-200 mt-0.5 truncate">
-              {metadata.channel || 'Direct message'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. WARNING SIGNS FOUND */}
-      <div className="bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <span>Warning Signs Found ({heuristicEngine.flags.length})</span>
-          </h4>
-        </div>
-
-        {heuristicEngine.flags.length === 0 ? (
-          <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-            <div>
-              <p className="font-semibold">No common warning signs detected</p>
-              <p className="text-emerald-400/80 text-[11px] mt-0.5">
-                We did not find fee demands, suspicious payment requests, or free email addresses.
+          {(heuristicEngine?.flags || []).length === 0 ? (
+            <div className="p-6 rounded-xl bg-[#050816]/70 border border-emerald-500/30 text-center space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+              <p className="text-xs font-bold text-emerald-300">Zero Red Flags Identified</p>
+              <p className="text-[11px] text-slate-400">
+                No upfront fee demands, anonymous messaging traps, or compensation anomalies were spotted.
               </p>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {heuristicEngine.flags.map((flag, idx) => (
-              <div
-                key={idx}
-                className="p-4 rounded-xl bg-slate-950 border border-slate-800/90 hover:border-slate-700 transition-all space-y-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      flag.severity === 'CRITICAL' || flag.severity === 'HIGH'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    }`}>
-                      {flag.severity === 'CRITICAL' || flag.severity === 'HIGH' ? 'Major Warning' : 'Notice'}
-                    </span>
-                    <span className="font-bold text-xs sm:text-sm text-slate-200">
+          ) : (
+            <div className="space-y-3">
+              {(heuristicEngine?.flags || []).map((flag, idx) => (
+                <div 
+                  key={flag.id || idx}
+                  className="p-4 rounded-xl bg-[#050816]/80 border border-rose-500/30 space-y-2 hover:border-rose-400/60 transition-colors shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
                       {flag.label}
                     </span>
+                    <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded border ${
+                      flag.severity === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse' :
+                      flag.severity === 'HIGH' ? 'bg-orange-500/20 text-orange-300 border-orange-500/40' :
+                      'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    }`}>
+                      {flag.severity}
+                    </span>
                   </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                    {flag.description}
+                  </p>
+
+                  {flag.evidenceSnippet && (
+                    <div className="p-2.5 rounded-lg bg-[#0a0f28] border border-cyan-500/15 text-[11px] font-mono text-cyan-200/90 italic">
+                      "{flag.evidenceSnippet}"
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {flag.description}
+        {/* Security Recommendations Card */}
+        <div className="rounded-2xl p-6 bg-[#090d24]/85 border border-cyan-500/20 backdrop-blur-xl shadow-lg space-y-4">
+          <div className="flex items-center justify-between border-b border-cyan-500/15 pb-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                Defensive Action Protocol
+              </h3>
+            </div>
+            <span className="text-[11px] font-mono text-slate-400">Next Steps</span>
+          </div>
+
+          <div className="space-y-3">
+            {(finalVerdict.recommendations || []).map((rec, idx) => (
+              <div 
+                key={idx}
+                className="p-3.5 rounded-xl bg-[#050816]/70 border border-cyan-500/20 flex items-start gap-3 hover:border-cyan-400/40 transition-colors"
+              >
+                <div className="w-5 h-5 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs font-mono font-bold flex-shrink-0 mt-0.5">
+                  {idx + 1}
+                </div>
+                <p className="text-xs text-slate-200 leading-relaxed font-sans">
+                  {rec}
                 </p>
-
-                {flag.evidenceSnippet && (
-                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-[11px] text-amber-300 flex items-start gap-2">
-                    <span className="text-slate-500 flex-shrink-0 font-medium">Found in text:</span>
-                    <span className="italic break-words">"{flag.evidenceSnippet}"</span>
-                  </div>
-                )}
               </div>
             ))}
           </div>
-        )}
+
+          {/* AI Intelligence Note */}
+          {aiModelEngine?.isAvailable && (
+            <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs space-y-1">
+              <span className="font-mono text-[10px] text-purple-300 uppercase tracking-wider block font-bold">
+                AI Semantic Verdict: {aiModelEngine.modelName}
+              </span>
+              <p className="text-slate-300 text-xs italic leading-relaxed">
+                "{aiModelEngine.verdictRationale}"
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 4. WHY THIS OFFER MAY BE RISKY */}
-      {heuristicEngine.flags.length > 0 && (
-        <div className="bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md space-y-3">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Info className="w-4 h-4 text-blue-400" />
-            <span>Why This Offer May Be Risky</span>
-          </h4>
+      {/* Raw Payload Inspection Accordion */}
+      {raw_text && (
+        <div className="rounded-2xl p-5 bg-[#090d24]/75 border border-cyan-500/20 backdrop-blur-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-cyan-400" />
+              <span>Audited Payload Body</span>
+            </span>
+            <span className="text-[11px] font-mono text-slate-500">{raw_text.length} bytes</span>
+          </div>
 
-          <div className="text-xs text-slate-300 leading-relaxed space-y-2 bg-slate-950 p-4 rounded-xl border border-slate-800">
-            <p>
-              Scammers often use fake job and internship offers to target college students and recent graduates.
-              Here is why the warning signs above indicate potential danger:
-            </p>
-            <ul className="list-disc list-inside space-y-1 text-slate-400 pl-1">
-              <li><strong>Real employers never ask you to pay money:</strong> Any request for a registration fee, laptop delivery charge, or training deposit is a major scam indicator.</li>
-              <li><strong>High pay for simple work is a trap:</strong> Promises of ₹3,000–₹5,000/day for liking videos or typing are typically prepaid task traps where victims lose money.</li>
-              <li><strong>Official hiring uses real company domains:</strong> Genuine recruiters use official company emails (like <code>careers@company.com</code>), not personal Gmail or Yahoo addresses.</li>
-              <li><strong>Legitimate companies always interview you:</strong> Being hired immediately over WhatsApp or Telegram without an assessment or interview is abnormal.</li>
-            </ul>
+          <div className="p-4 rounded-xl bg-[#050816] border border-cyan-500/15 text-xs text-slate-300 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed shadow-inner">
+            {raw_text}
           </div>
         </div>
       )}
-
-      {/* 5. WHAT YOU SHOULD DO NEXT */}
-      <div className="bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-md space-y-4">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>What You Should Do Next</span>
-        </h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          {finalVerdict.recommendations.map((rec, i) => (
-            <div
-              key={i}
-              className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5"
-            >
-              <div className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
-                {i + 1}
-              </div>
-              <p className="text-slate-300 leading-relaxed">{rec}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Ready-to-use verification template */}
-        <div className="mt-4 p-4 rounded-xl bg-blue-950/30 border border-blue-900/60 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5" />
-              Template: How to Email the Real Company to Verify This Offer
-            </span>
-            <button
-              type="button"
-              onClick={handleCopyEmail}
-              className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 font-semibold"
-            >
-              {copiedEmail ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              <span>{copiedEmail ? 'Copied!' : 'Copy Template'}</span>
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Find the company's real website yourself (do not click links in the message), look up their official careers contact email, and send this simple note:
-          </p>
-          <pre className="text-[11px] font-sans text-slate-300 bg-slate-950 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap leading-relaxed border border-slate-800">
-            {hrEmailTemplate}
-          </pre>
-        </div>
-      </div>
-    </div>
+    </motion.div>
   );
 };

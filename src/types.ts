@@ -53,6 +53,7 @@ export interface AnalysisResponse {
     senderInfo?: string;
     channel?: string;
   };
+  raw_text?: string;
 }
 
 export interface AnalysisRecordItem {

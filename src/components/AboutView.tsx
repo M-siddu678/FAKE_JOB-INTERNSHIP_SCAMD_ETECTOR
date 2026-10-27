@@ -4,12 +4,15 @@ import {
   ShieldCheck, 
   GraduationCap, 
   Search, 
-  AlertTriangle, 
-  CheckCircle2, 
-  HelpCircle,
-  Lock,
-  ArrowRight
+  Terminal, 
+  Cpu, 
+  Lock, 
+  ArrowRight,
+  Database,
+  Sparkles,
+  Zap
 } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface AboutViewProps {
   onGoToChecker: () => void;
@@ -17,120 +20,90 @@ interface AboutViewProps {
 
 export const AboutView: React.FC<AboutViewProps> = ({ onGoToChecker }) => {
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-8"
+    >
       {/* Header */}
-      <div className="bg-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-800 shadow-xl space-y-3">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold border border-blue-500/20">
-          <Info className="w-4 h-4 text-blue-400" />
-          <span>About This Tool</span>
+      <div className="rounded-2xl p-6 sm:p-8 bg-[#090d24]/90 border border-cyan-500/25 shadow-[0_10px_35px_rgba(0,0,0,0.5)] backdrop-blur-2xl space-y-3">
+        <div className="flex items-center gap-2 text-xs font-mono text-cyan-400">
+          <Terminal className="w-4 h-4 text-cyan-400" />
+          <span>SYSTEM_SPECIFICATION // ARCHITECTURE</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          About the Fake Job &amp; Internship Scam Checker
+          About the Fake Job &amp; Internship Scam Detection System
         </h2>
-        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-3xl">
-          A free, accessible safety website created to help college students, fresh graduates, and job seekers check whether recruitment messages and internship offers are genuine or potential scams.
+        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-3xl font-normal font-sans">
+          A dedicated cybersecurity and NLP detection platform built to protect students, fresh graduates, and career seekers from modern employment fraud, identity theft syndicates, and deceptive task operations.
         </p>
       </div>
 
-      {/* 5 Core Questions Answered in Plain English */}
+      {/* 4 Core Pillars */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* 1. What this website does */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
+        <div className="rounded-2xl p-6 bg-[#090d24]/80 border border-cyan-500/15 backdrop-blur-xl space-y-3 shadow-lg">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-bold">
             <Search className="w-5 h-5" />
           </div>
           <h3 className="text-base font-bold text-white">
-            1. What This Website Does
+            1. Dual Detection Engine
           </h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            This tool scans job advertisements, internship emails, and messages you receive on platforms like WhatsApp or Telegram. It reads through the text to spot common deception patterns, fee demands, and fraudulent claims that scammers typically use.
+          <p className="text-xs text-slate-300 leading-relaxed font-sans">
+            The platform synthesizes an 8-rule deterministic NLP heuristic engine (evaluating upfront fee traps, suspicious messaging handles, and compensation anomalies) with Google Gemini neural reasoning to evaluate subtle psychological manipulation tactics.
           </p>
         </div>
 
-        {/* 2. Why students need it */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold">
+        <div className="rounded-2xl p-6 bg-[#090d24]/80 border border-purple-500/15 backdrop-blur-xl space-y-3 shadow-lg">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold">
             <GraduationCap className="w-5 h-5" />
           </div>
           <h3 className="text-base font-bold text-white">
-            2. Why Students Need It
+            2. Student Threat Vector Protection
           </h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Students and fresh graduates are the primary targets of recruitment scams. Scammers pretend to be famous companies (like Google, TCS, or Infosys) and trick eager candidates into paying "refundable registration fees" or "laptop courier charges," resulting in stolen money and identity theft.
+          <p className="text-xs text-slate-300 leading-relaxed font-sans">
+            Students and freshers are the prime targets for fake summer internship schemes and prepaid video review tasks. Scammers spoof Fortune 500 brands to extract refundable registration deposits or courier insurance, causing financial distress and identity theft.
           </p>
         </div>
 
-        {/* 3. How to use it */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-            <CheckCircle2 className="w-5 h-5" />
+        <div className="rounded-2xl p-6 bg-[#090d24]/80 border border-blue-500/15 backdrop-blur-xl space-y-3 shadow-lg">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center font-bold">
+            <Database className="w-5 h-5" />
           </div>
           <h3 className="text-base font-bold text-white">
-            3. How to Use It
+            3. Client-Authoritative Privacy Architecture
           </h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            It takes just a few seconds:
+          <p className="text-xs text-slate-300 leading-relaxed font-sans">
+            Your checked offers, warning reports, and personal notes are retained within your own browser storage. There are no mandatory logins or tracking telemetry, guaranteeing maximum candidate privacy.
           </p>
-          <ol className="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>Copy the job offer or message you received.</li>
-            <li>Paste it into our text box on the Home or Check a Job page.</li>
-            <li>Click <strong>Check This Job</strong>.</li>
-            <li>Review the warning signs found and follow the recommended safety steps.</li>
-          </ol>
         </div>
 
-        {/* 4. What warning signs it checks */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-            <AlertTriangle className="w-5 h-5" />
+        <div className="rounded-2xl p-6 bg-[#090d24]/80 border border-emerald-500/15 backdrop-blur-xl space-y-3 shadow-lg">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
+            <Lock className="w-5 h-5" />
           </div>
           <h3 className="text-base font-bold text-white">
-            4. What Warning Signs It Checks
+            4. Zero-Trust Verification Protocol
           </h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Our detection system looks for major danger signs, including:
+          <p className="text-xs text-slate-300 leading-relaxed font-sans">
+            The system adheres to zero-trust principles: never trust a recruiter based purely on a PDF offer letter, logo, or WhatsApp message. Always verify corporate identity through verified company portals and institutional campus channels.
           </p>
-          <ul className="list-disc list-inside text-xs text-slate-300 space-y-1 pl-1">
-            <li>Demands for registration, training, or equipment fees.</li>
-            <li>Unrealistically high salaries for low-skill tasks.</li>
-            <li>Recruiters using personal Gmail or Yahoo addresses.</li>
-            <li>Interviews done strictly over Telegram or WhatsApp chat.</li>
-            <li>Urgent deadlines pushing you to pay right away.</li>
-            <li>Requests for private banking passwords, PINs, or OTPs.</li>
-          </ul>
         </div>
       </div>
 
-      {/* 5. Why users should independently verify employers */}
-      <div className="bg-slate-900 rounded-2xl p-6 sm:p-7 border border-blue-900/60 shadow-xl space-y-3">
-        <div className="flex items-center gap-2">
-          <Lock className="w-5 h-5 text-blue-400" />
-          <h3 className="text-base font-bold text-white">
-            5. Why You Should Always Independently Verify Employers
-          </h3>
+      {/* Call to action card */}
+      <div className="rounded-2xl p-6 bg-gradient-to-r from-cyan-950/40 via-[#090d24] to-purple-950/40 border border-cyan-500/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-base font-bold text-white">Ready to verify a suspicious offer?</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Paste any recruiter email or WhatsApp message to receive an instant security verdict.</p>
         </div>
-        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-          While this checker is very helpful at catching common scam phrases and red flags, no automated website can replace your own judgment. Scammers constantly change their words and tactics.
-        </p>
-        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-2">
-          <p className="font-semibold text-white">Always follow these two simple habits:</p>
-          <ul className="list-disc list-inside space-y-1 text-slate-400 pl-1">
-            <li>Visit the company's real website yourself by typing their name into Google or your browser address bar.</li>
-            <li>If you are in college, ask your Training &amp; Placement Officer (TPO) to confirm if the recruiter is legitimate.</li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Call to action */}
-      <div className="text-center pt-2 pb-4">
         <button
           onClick={onGoToChecker}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-md transition-all active:scale-[0.99]"
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_15px_rgba(56,189,248,0.3)] transition-all flex items-center gap-2 flex-shrink-0"
         >
-          <span>Check a Job Advertisement Now</span>
+          <span>Open Security Console</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 };

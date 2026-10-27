@@ -138,7 +138,8 @@ export default async function handler(req: any, res: any) {
         heuristicSummary: heuristicResult.heuristicSummary
       },
       aiModelEngine: aiResult,
-      metadata
+      metadata,
+      raw_text: text
     });
   } catch (err: any) {
     console.error('Error in /api/analyze serverless handler:', err);

@@ -1,4 +1,4 @@
-import { AnalysisResponse, AnalysisRecordItem, FlaggedIndicator, DatabaseStats } from '../types';
+import { AnalysisResponse, AnalysisRecordItem, DatabaseStats } from '../types';
 import { runHeuristicNLPAnalysis } from '../../server/nlpRules';
 
 const LOCAL_STORAGE_KEY = 'scam_checker_records_v1';
@@ -46,6 +46,54 @@ export async function safeFetchJson<T>(
   }
 }
 
+// Memory fallback cache in case browser storage (localStorage) is blocked, in private mode, or iframe-restricted
+let inMemoryClientRecords: AnalysisRecordItem[] = [];
+
+// Convert any AnalysisResponse into a complete AnalysisRecordItem for history display & storage
+export function convertResponseToRecordItem(
+  data: AnalysisResponse,
+  rawTextFallback: string,
+  metadataFallback?: {
+    companyName?: string;
+    jobTitle?: string;
+    senderInfo?: string;
+    channel?: string;
+  }
+): AnalysisRecordItem {
+  const flags = Array.isArray(data.heuristicEngine?.flags) ? data.heuristicEngine.flags : [];
+  const recommendations = Array.isArray(data.finalVerdict?.recommendations)
+    ? data.finalVerdict.recommendations
+    : [];
+
+  return {
+    id: data.recordId || `check-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: data.timestamp || new Date().toISOString(),
+    job_title: metadataFallback?.jobTitle || data.metadata?.jobTitle || 'Job / Internship Offer',
+    company_name:
+      metadataFallback?.companyName ||
+      data.metadata?.companyName ||
+      (data.heuristicEngine?.extractedEntities?.emails?.[0]
+        ? `From: ${data.heuristicEngine.extractedEntities.emails[0]}`
+        : 'Unspecified Company'),
+    sender_info:
+      metadataFallback?.senderInfo ||
+      data.metadata?.senderInfo ||
+      data.heuristicEngine?.extractedEntities?.emails?.join(', ') ||
+      'Direct message',
+    channel: metadataFallback?.channel || data.metadata?.channel || 'Direct Message',
+    risk_category: data.finalVerdict?.riskCategory || 'Suspicious',
+    risk_score: typeof data.finalVerdict?.riskScore === 'number' ? data.finalVerdict.riskScore : 50,
+    heuristic_score: data.heuristicEngine?.score ?? data.finalVerdict?.riskScore ?? 50,
+    model_score: data.aiModelEngine?.isAvailable ? data.aiModelEngine.confidenceScore ?? null : null,
+    summary: data.finalVerdict?.summary || 'Analysis completed.',
+    raw_text: data.raw_text || rawTextFallback || '',
+    flags,
+    recommendations,
+    model_verdict: data.aiModelEngine?.isAvailable ? data.aiModelEngine : null,
+    is_starred: data.finalVerdict?.riskCategory === 'Fraudulent' ? 1 : 0
+  };
+}
+
 // Client-side rule analysis fallback (runs 100% in browser with no API key or server required)
 export function runClientSideAnalysis(payload: {
   text: string;
@@ -53,7 +101,7 @@ export function runClientSideAnalysis(payload: {
   jobTitle?: string;
   senderInfo?: string;
   channel?: string;
-}): AnalysisResponse {
+}): { response: AnalysisResponse; recordItem: AnalysisRecordItem } {
   const { text, companyName, jobTitle, senderInfo, channel } = payload;
   const metadata = { companyName, jobTitle, senderInfo, channel };
 
@@ -94,76 +142,214 @@ export function runClientSideAnalysis(payload: {
       modelName: 'Built-in Rule Checker',
       note: 'Checked using built-in scam detection rules.'
     },
-    metadata
+    metadata,
+    raw_text: text
   };
 
-  // Save to local storage as fallback
-  saveRecordToLocalStorage({
-    id: recordId,
-    timestamp,
-    job_title: jobTitle || 'Job / Internship Offer',
-    company_name: companyName || (heuristicResult.extractedEntities.emails[0] ? `From: ${heuristicResult.extractedEntities.emails[0]}` : 'Unspecified Company'),
-    sender_info: senderInfo || heuristicResult.extractedEntities.emails.join(', ') || 'Direct message',
-    channel: channel || 'Direct Message',
-    risk_category: finalCategory,
-    risk_score: finalScore,
-    heuristic_score: heuristicResult.heuristicScore,
-    model_score: null,
-    summary: finalSummary,
-    raw_text: text,
-    flags: heuristicResult.flags,
-    recommendations: heuristicResult.recommendations,
-    model_verdict: null,
-    is_starred: finalCategory === 'Fraudulent' ? 1 : 0
-  });
-
-  return response;
+  const recordItem = convertResponseToRecordItem(response, text, metadata);
+  return { response, recordItem };
 }
 
-// LocalStorage helpers for offline or static hosting
+// Sanitize a parsed record item to ensure defensive runtime stability
+function sanitizeRecordItem(item: any): AnalysisRecordItem | null {
+  if (!item || typeof item !== 'object' || !item.id) return null;
+  // Discard any fake demo records from history
+  if (String(item.id).startsWith('scan-demo-')) return null;
+
+  let parsedFlags: any[] = [];
+  if (Array.isArray(item.flags)) {
+    parsedFlags = item.flags;
+  } else if (typeof item.flags === 'string') {
+    try {
+      const p = JSON.parse(item.flags);
+      if (Array.isArray(p)) parsedFlags = p;
+    } catch {}
+  } else if (typeof item.flags_json === 'string') {
+    try {
+      const p = JSON.parse(item.flags_json);
+      if (Array.isArray(p)) parsedFlags = p;
+    } catch {}
+  }
+
+  let parsedRecommendations: string[] = [];
+  if (Array.isArray(item.recommendations)) {
+    parsedRecommendations = item.recommendations;
+  } else if (typeof item.recommendations === 'string') {
+    try {
+      const p = JSON.parse(item.recommendations);
+      if (Array.isArray(p)) parsedRecommendations = p;
+    } catch {}
+  } else if (typeof item.recommendations_json === 'string') {
+    try {
+      const p = JSON.parse(item.recommendations_json);
+      if (Array.isArray(p)) parsedRecommendations = p;
+    } catch {}
+  }
+
+  let parsedModelVerdict: any = item.model_verdict || null;
+  if (!parsedModelVerdict && typeof item.model_verdict_json === 'string') {
+    try {
+      parsedModelVerdict = JSON.parse(item.model_verdict_json);
+    } catch {}
+  }
+
+  return {
+    id: String(item.id),
+    timestamp: item.timestamp || new Date().toISOString(),
+    job_title: String(item.job_title || 'Job / Internship Offer'),
+    company_name: String(item.company_name || 'Unspecified Company'),
+    sender_info: String(item.sender_info || 'Direct message'),
+    channel: String(item.channel || 'Direct Message'),
+    risk_category: item.risk_category === 'Fraudulent' || item.risk_category === 'Suspicious' || item.risk_category === 'Genuine'
+      ? item.risk_category
+      : 'Suspicious',
+    risk_score: Number(item.risk_score || 0),
+    heuristic_score: Number(item.heuristic_score || item.risk_score || 0),
+    model_score: typeof item.model_score === 'number' ? item.model_score : null,
+    summary: String(item.summary || ''),
+    raw_text: String(item.raw_text || ''),
+    flags: parsedFlags,
+    recommendations: parsedRecommendations,
+    model_verdict: parsedModelVerdict,
+    is_starred: item.is_starred ? 1 : 0
+  };
+}
+
+// Get saved records: reads localStorage first, falls back to in-memory store
 export function getLocalStorageRecords(): AnalysisRecordItem[] {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return [];
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const sanitized = parsed
+            .map(sanitizeRecordItem)
+            .filter((r): r is AnalysisRecordItem => r !== null)
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+          // Automatically purge any previously cached fake records from the browser disk
+          if (sanitized.length !== parsed.length) {
+            try {
+              window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sanitized));
+            } catch {}
+          }
+
+          // Keep in-memory store synchronized
+          inMemoryClientRecords = sanitized;
+          return sanitized;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Storage] Could not read from localStorage, using memory store:', err);
+  }
+
+  // Fallback to in-memory store (also strip any fake demo records)
+  return [...inMemoryClientRecords]
+    .filter(r => !String(r.id).startsWith('scan-demo-'))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+export interface SaveRecordResult {
+  success: boolean;
+  persistedToDisk: boolean;
+  error?: string;
+}
+
+// Save a single record: prepends to existing list, avoiding duplicates, and writes atomically
+export function saveRecordToLocalStorage(record: AnalysisRecordItem): SaveRecordResult {
+  const sanitized = sanitizeRecordItem(record);
+  if (!sanitized) {
+    return { success: false, persistedToDisk: false, error: 'Invalid record data.' };
+  }
+
+  // 1. Update in-memory store immediately
+  inMemoryClientRecords = [sanitized, ...inMemoryClientRecords.filter((r) => r.id !== sanitized.id)].slice(0, 100);
+
+  // 2. Persist to browser localStorage
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const existing = getLocalStorageRecords();
+      const updated = [sanitized, ...existing.filter((r) => r.id !== sanitized.id)].slice(0, 100);
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+      return { success: true, persistedToDisk: true };
+    }
+    return {
+      success: true,
+      persistedToDisk: false,
+      error: 'Browser storage is unavailable; record is kept for this session.'
+    };
+  } catch (e: any) {
+    console.warn('[Storage] Failed to write to localStorage:', e);
+    return {
+      success: true,
+      persistedToDisk: false,
+      error: 'Your browser storage is restricted or full; saved in memory for this session.'
+    };
   }
 }
 
-export function saveRecordToLocalStorage(record: AnalysisRecordItem): void {
+// Save all records atomically in one operation (no repeated write loops)
+export function saveAllRecordsToLocalStorage(records: AnalysisRecordItem[]): boolean {
+  const sanitized = records
+    .map(sanitizeRecordItem)
+    .filter((r): r is AnalysisRecordItem => r !== null)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 100);
+
+  inMemoryClientRecords = sanitized;
+
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const existing = getLocalStorageRecords();
-    const updated = [record, ...existing.filter((r) => r.id !== record.id)].slice(0, 50);
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sanitized));
+      return true;
+    }
+    return false;
   } catch (e) {
-    console.warn('Could not save to localStorage:', e);
+    console.warn('[Storage] Failed to save all records to localStorage:', e);
+    return false;
   }
 }
 
 export function deleteLocalStorageRecord(id: string): void {
+  inMemoryClientRecords = inMemoryClientRecords.filter((r) => r.id !== id);
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const existing = getLocalStorageRecords();
-    const updated = existing.filter((r) => r.id !== id);
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const existing = getLocalStorageRecords();
+      const updated = existing.filter((r) => r.id !== id);
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    }
   } catch (e) {
-    console.warn('Could not delete from localStorage:', e);
+    console.warn('[Storage] Could not delete from localStorage:', e);
+  }
+}
+
+export function clearAllLocalStorageRecords(): void {
+  inMemoryClientRecords = [];
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.warn('[Storage] Could not clear localStorage:', e);
   }
 }
 
 export function toggleLocalStorageStar(id: string): void {
+  inMemoryClientRecords = inMemoryClientRecords.map((r) =>
+    r.id === id ? { ...r, is_starred: r.is_starred ? 0 : 1 } : r
+  );
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const existing = getLocalStorageRecords();
-    const updated = existing.map((r) =>
-      r.id === id ? { ...r, is_starred: r.is_starred ? 0 : 1 } : r
-    );
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const existing = getLocalStorageRecords();
+      const updated = existing.map((r) =>
+        r.id === id ? { ...r, is_starred: r.is_starred ? 0 : 1 } : r
+      );
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    }
   } catch (e) {
-    console.warn('Could not update bookmark in localStorage:', e);
+    console.warn('[Storage] Could not update bookmark in localStorage:', e);
   }
 }
 

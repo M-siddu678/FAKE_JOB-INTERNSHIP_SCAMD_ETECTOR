@@ -7,10 +7,16 @@ import {
   Mail, 
   Radio, 
   Lock, 
-  Lightbulb,
-  AlertTriangle,
-  ArrowRight
+  Lightbulb, 
+  AlertTriangle, 
+  ArrowRight,
+  ShieldCheck,
+  Terminal,
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { SAMPLE_CASES, SampleCase } from '../data/samples';
 import { AnalysisResponse } from '../types';
 
@@ -54,7 +60,7 @@ export const Analyzer: React.FC<AnalyzerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || text.trim().length < 20) return;
+    if (!text.trim() || text.trim().length < 20 || isLoading) return;
     onAnalyze({
       text: text.trim(),
       companyName: companyName.trim() || undefined,
@@ -77,25 +83,39 @@ export const Analyzer: React.FC<AnalyzerProps> = ({
   return (
     <div className="space-y-6">
       {/* Intro Header */}
-      <div className="bg-slate-900 rounded-2xl p-6 sm:p-7 border border-slate-800 shadow-xl">
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl p-6 sm:p-7 bg-[#090d24]/85 border border-cyan-500/25 shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+      >
+        <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 mb-1">
+          <Terminal className="w-4 h-4 text-cyan-400" />
+          <span>CYBER_DEFENSE_CONSOLE // DEEP_INSPECTOR</span>
+        </div>
         <h2 className="text-2xl font-bold text-white tracking-tight">
-          Check a Job Advertisement
+          Targeted Scam &amp; Threat Analysis
         </h2>
-        <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
-          Paste any job offer, email, internship notice, or recruitment message below to check for warning signs.
+        <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl font-normal">
+          Paste the unedited job advertisement or recruitment communication below. 
+          Optionally add metadata to enable high-precision entity verification and cross-domain auditing.
         </p>
-      </div>
+      </motion.div>
 
       {/* Preset Test Case Selector */}
-      <div className="bg-slate-900/90 rounded-2xl p-4 sm:p-5 border border-slate-800">
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="rounded-2xl p-5 bg-[#090d21]/75 border border-cyan-500/20 backdrop-blur-xl shadow-lg"
+      >
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-amber-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Try a Quick Example:
+            <Lightbulb className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-300">
+              Quick Threat Scenario Presets:
             </h3>
           </div>
-          <span className="text-[11px] text-slate-400">Click any example to paste it automatically</span>
+          <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">Select to test scanner capabilities</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
@@ -106,189 +126,220 @@ export const Analyzer: React.FC<AnalyzerProps> = ({
                 key={sample.id}
                 type="button"
                 onClick={() => handleSelectSample(sample)}
-                className={`text-left p-3 rounded-xl border transition-all flex flex-col justify-between ${
+                className={`text-left p-3.5 rounded-xl border transition-all duration-200 flex flex-col justify-between group ${
                   isSelected
-                    ? 'bg-blue-950/60 border-blue-500 shadow-md ring-1 ring-blue-500'
-                    : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800 hover:border-slate-600'
+                    ? 'bg-[#10193d] border-cyan-400 shadow-[0_0_15px_rgba(56,189,248,0.3)] ring-1 ring-cyan-400'
+                    : 'bg-[#060a19]/80 border-cyan-500/15 hover:bg-[#0c1432] hover:border-cyan-400/40'
                 }`}
               >
                 <div>
-                  <span className="font-semibold text-xs text-slate-200 line-clamp-1">
-                    {sample.name}
-                  </span>
-                  <p className="text-[11px] text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="font-bold text-xs text-white group-hover:text-cyan-200 line-clamp-1 transition-colors">
+                      {sample.name}
+                    </span>
+                    <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.2 rounded border ${
+                      sample.categoryBadge === 'Fraudulent' ? 'text-rose-400 border-rose-500/40 bg-rose-500/10' :
+                      sample.categoryBadge === 'Suspicious' ? 'text-amber-400 border-amber-500/40 bg-amber-500/10' :
+                      'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
+                    }`}>
+                      {sample.categoryBadge}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
                     {sample.description}
                   </p>
                 </div>
-                <div className="mt-2 text-[10px] text-blue-400 flex items-center gap-1 font-medium">
-                  <span>Use this example</span>
+                <div className="mt-2.5 text-[10px] font-mono text-cyan-400 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                  <span>Load into console</span>
                   <ArrowRight className="w-3 h-3" />
                 </div>
               </button>
             );
           })}
         </div>
-      </div>
+      </motion.div>
 
       {/* Main Check Form */}
-      <form onSubmit={handleSubmit} className="bg-slate-900 rounded-2xl p-5 sm:p-7 border border-slate-800 shadow-lg space-y-5">
-        <div className="flex items-center justify-between">
-          <label htmlFor="checkInput" className="text-xs sm:text-sm font-bold text-slate-200 uppercase tracking-wider">
-            Job Advertisement Text
+      <motion.form 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        onSubmit={handleSubmit} 
+        className="relative rounded-2xl p-5 sm:p-7 bg-[#090d24]/90 border border-cyan-500/30 shadow-[0_10px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-5 overflow-hidden"
+      >
+        {/* Laser Scanner Line Animation */}
+        {isLoading && (
+          <div className="absolute inset-0 pointer-events-none z-30">
+            <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#38bdf8] animate-laser-scan absolute top-0" />
+            <div className="absolute inset-0 bg-cyan-950/25 backdrop-blur-[1px]" />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between border-b border-cyan-500/15 pb-3">
+          <label htmlFor="checkInput" className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Terminal className="w-4 h-4 text-cyan-400" />
+            <span>PAYLOAD_TEXT (JOB ADVERTISEMENT)</span>
           </label>
 
-          <button
-            type="button"
-            onClick={() => setShowExtraDetails(!showExtraDetails)}
-            className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-          >
-            {showExtraDetails ? 'Hide Extra Details' : '+ Add Extra Details (Company, Email, etc.)'}
-          </button>
-        </div>
-
-        {/* Collapsible Metadata Fields */}
-        {showExtraDetails && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-800/60 border border-slate-700/50">
-            <div>
-              <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1 mb-1">
-                <Building2 className="w-3 h-3 text-slate-400" /> Company Name (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Acme Tech"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1 mb-1">
-                <Briefcase className="w-3 h-3 text-slate-400" /> Job Role (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Intern, Assistant"
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1 mb-1">
-                <Mail className="w-3 h-3 text-slate-400" /> Recruiter's Email (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. hr@company.com"
-                value={senderInfo}
-                onChange={(e) => setSenderInfo(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1 mb-1">
-                <Radio className="w-3 h-3 text-slate-400" /> Where Was It Received?
-              </label>
-              <select
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-              >
-                <option value="Email">Email</option>
-                <option value="WhatsApp / Telegram">WhatsApp / Telegram</option>
-                <option value="LinkedIn">LinkedIn</option>
-                <option value="SMS / Text Message">SMS / Text Message</option>
-                <option value="College Placement Office">College Placement Office</option>
-                <option value="Job Website">Job Website</option>
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* Text Area */}
-        <div>
-          <textarea
-            id="checkInput"
-            rows={7}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Paste the job or internship advertisement here..."
-            className="w-full bg-slate-950 text-slate-100 placeholder-slate-500 rounded-xl p-4 text-xs sm:text-sm border border-slate-700/80 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent leading-relaxed resize-y"
-          />
-
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
-            <span>{text.length} characters</span>
-            {text.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="flex items-center gap-1 text-slate-400 hover:text-rose-400 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Clear Text</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Error notification */}
-        {error && (
-          <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-xs flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold">Something Went Wrong</p>
-              <p className="mt-0.5 text-rose-300/90">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-          {/* Required Short Note */}
-          <div className="flex items-center gap-2 text-xs text-amber-300/90 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
-            <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span>Never pay money to secure a job without verifying the employer.</span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             {text.length > 0 && (
               <button
                 type="button"
                 onClick={handleClear}
                 disabled={isLoading}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+                className="text-xs text-slate-400 hover:text-rose-400 transition-colors flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-800"
               >
-                Clear Text
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear</span>
               </button>
             )}
-
-            <button
-              type="submit"
-              disabled={isLoading || text.trim().length < 20}
-              className={`flex-1 sm:flex-initial px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md flex items-center justify-center gap-2 ${
-                isLoading || text.trim().length < 20
-                  ? 'bg-blue-600/40 text-blue-200 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white hover:shadow-blue-500/20 active:scale-[0.99]'
-              }`}
-            >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Checking Your Advertisement...</span>
-                </>
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  <span>Check This Job</span>
-                </>
-              )}
-            </button>
+            <span className={`text-xs font-mono px-2 py-0.5 rounded ${
+              text.trim().length >= 20 ? 'text-cyan-400 bg-cyan-950/60 border border-cyan-500/30' : 'text-slate-500 bg-slate-900'
+            }`}>
+              {text.trim().length} chars
+            </span>
           </div>
         </div>
-      </form>
+
+        <div>
+          <textarea
+            id="checkInput"
+            rows={7}
+            disabled={isLoading}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste the full job advertisement, internship offer letter, recruiter message, or email body here..."
+            className="w-full bg-[#050816]/90 border border-cyan-500/25 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl p-4 text-sm text-slate-100 placeholder-slate-500 leading-relaxed font-sans focus:outline-none transition-all resize-y shadow-inner"
+          />
+        </div>
+
+        {/* Collapsible Metadata Drawer */}
+        <div className="border border-cyan-500/15 rounded-xl bg-[#060a19]/70 overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => setShowExtraDetails(!showExtraDetails)}
+            className="w-full px-4 py-3 text-xs font-mono flex items-center justify-between text-slate-300 hover:text-cyan-300 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-cyan-400" />
+              <span>Context Metadata (Optional - increases accuracy)</span>
+            </div>
+            {showExtraDetails ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+
+          {showExtraDetails && (
+            <div className="p-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-cyan-500/10">
+              <div>
+                <label className="block text-[11px] font-mono text-slate-400 mb-1 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Claimed Company Name</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={isLoading}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. Apex Media, Infosys, NextGen Cloud"
+                  className="w-full bg-[#050816] border border-cyan-500/20 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono text-slate-400 mb-1 flex items-center gap-1">
+                  <Briefcase className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Job Role / Title</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={isLoading}
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="e.g. Data Entry Assistant, Summer Intern"
+                  className="w-full bg-[#050816] border border-cyan-500/20 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono text-slate-400 mb-1 flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Sender Email or Phone</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={isLoading}
+                  value={senderInfo}
+                  onChange={(e) => setSenderInfo(e.target.value)}
+                  placeholder="e.g. recruiter@gmail.com, @telegram_id"
+                  className="w-full bg-[#050816] border border-cyan-500/20 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono text-slate-400 mb-1 flex items-center gap-1">
+                  <Radio className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Recruitment Channel</span>
+                </label>
+                <select
+                  disabled={isLoading}
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value)}
+                  className="w-full bg-[#050816] border border-cyan-500/20 focus:border-cyan-400 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="Email">Official / Direct Email</option>
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Telegram">Telegram</option>
+                  <option value="LinkedIn">LinkedIn InMail</option>
+                  <option value="SMS">SMS / Text Message</option>
+                  <option value="Campus Placement">Campus Placement Cell</option>
+                  <option value="Job Board">Job Board (Naukri, Indeed)</option>
+                  <option value="Other">Other Channel</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2.5 shadow-[0_0_15px_rgba(244,63,94,0.15)]">
+            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Action Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+          <div className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Strict privacy. Results are retained exclusively in your browser.</span>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading || !text.trim() || text.trim().length < 20}
+            className={`w-full sm:w-auto px-8 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 flex items-center justify-center gap-2.5 ${
+              isLoading || !text.trim() || text.trim().length < 20
+                ? 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-purple-600 hover:from-cyan-400 hover:via-blue-500 hover:to-purple-500 text-white shadow-[0_0_25px_rgba(56,189,248,0.35)] hover:shadow-[0_0_35px_rgba(56,189,248,0.6)] hover:scale-[1.02] active:scale-[0.99] border border-cyan-300/40 cursor-pointer'
+            }`}
+          >
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <span>Running Deep Threat Scan...</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-5 h-5 drop-shadow-[0_0_6px_rgba(255,255,255,0.7)]" />
+                <span className="drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]">
+                  Check This Job
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
+      </motion.form>
     </div>
   );
 };

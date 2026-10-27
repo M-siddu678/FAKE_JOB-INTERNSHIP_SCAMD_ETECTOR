@@ -15,65 +15,91 @@ import {
 import { 
   safeFetchJson, 
   runClientSideAnalysis, 
+  convertResponseToRecordItem,
   getLocalStorageRecords, 
-  deleteLocalStorageRecord, 
+  saveRecordToLocalStorage,
+  saveAllRecordsToLocalStorage,
+  deleteLocalStorageRecord,
+  clearAllLocalStorageRecords,
   toggleLocalStorageStar, 
   computeLocalStats 
 } from './utils/clientAnalyzer';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Lock, Terminal, Cpu, Zap, ArrowRight, ShieldAlert } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [currentResult, setCurrentResult] = useState<AnalysisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
   // Saved records state
   const [records, setRecords] = useState<AnalysisRecordItem[]>([]);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
 
-  // Fetch records with graceful fallback
+  // Fetch and sync records from both local storage and server
   const fetchRecords = async () => {
+    // 1. Immediately load local records (authoritative for client & deployed sites)
+    const localRecords = getLocalStorageRecords();
+    setRecords(localRecords);
+    setStats(computeLocalStats(localRecords));
+
     try {
+      // 2. Fetch server records if running with backend (e.g. Google AI Studio)
       const historyResult = await safeFetchJson<{ records: AnalysisRecordItem[] }>('/api/history');
-      const statsResult = await safeFetchJson<DatabaseStats>('/api/stats');
 
-      const localRecords = getLocalStorageRecords();
+      if (historyResult.ok && Array.isArray(historyResult.data?.records)) {
+        // Discard any fake demo records from server
+        const serverRecords = historyResult.data.records.filter(
+          (r) => !String(r.id).startsWith('scan-demo-')
+        );
 
-      if (historyResult.ok && historyResult.data?.records) {
-        // Merge server records with any locally saved ones
-        const serverRecords = historyResult.data.records;
-        const combined = [...serverRecords];
-        for (const loc of localRecords) {
-          if (!combined.some((s) => s.id === loc.id)) {
-            combined.push(loc);
+        if (serverRecords.length > 0) {
+          // Merge without duplicates (favoring local for any un-synced checks)
+          const recordMap = new Map<string, AnalysisRecordItem>();
+          for (const loc of localRecords) {
+            recordMap.set(loc.id, loc);
           }
-        }
-        setRecords(combined);
-      } else {
-        // Server returned non-JSON (e.g. 404 on Vercel) or failed: use local records
-        setRecords(localRecords);
-      }
+          for (const srv of serverRecords) {
+            if (!recordMap.has(srv.id)) {
+              recordMap.set(srv.id, srv);
+            }
+          }
 
-      if (statsResult.ok && statsResult.data) {
-        setStats(statsResult.data);
-      } else {
-        setStats(computeLocalStats(localRecords));
+          const combined = Array.from(recordMap.values()).sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          setRecords(combined);
+          setStats(computeLocalStats(combined));
+
+          // Keep local storage in sync
+          saveAllRecordsToLocalStorage(combined);
+        }
       }
     } catch (err) {
       console.warn('Could not load remote records, using local storage:', err);
-      const localRecords = getLocalStorageRecords();
-      setRecords(localRecords);
-      setStats(computeLocalStats(localRecords));
     }
   };
 
   useEffect(() => {
     fetchRecords();
+
+    // Listen for storage events across browser tabs on deployed websites
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'scam_checker_records_v1') {
+        const updated = getLocalStorageRecords();
+        setRecords(updated);
+        setStats(computeLocalStats(updated));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Handle scam analysis submission with safe fallback
+  // Handle scam analysis submission
   const handleAnalyze = async (payload: {
     text: string;
     companyName?: string;
@@ -84,6 +110,9 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
+    let savedRecord: AnalysisRecordItem | null = null;
+    let analysisResult: AnalysisResponse | null = null;
+
     try {
       // 1. Attempt server-side analysis
       const res = await safeFetchJson<AnalysisResponse>('/api/analyze', {
@@ -93,59 +122,104 @@ export default function App() {
       });
 
       if (res.ok && res.data) {
-        // Server analyzed successfully
-        setCurrentResult(res.data);
-        setActiveTab('check');
-        fetchRecords();
-        return;
+        analysisResult = res.data;
+        // Convert to full record item
+        savedRecord = convertResponseToRecordItem(res.data, payload.text, {
+          companyName: payload.companyName,
+          jobTitle: payload.jobTitle,
+          senderInfo: payload.senderInfo,
+          channel: payload.channel
+        });
+      } else {
+        // Fallback to client-side detection engine
+        const fallback = runClientSideAnalysis(payload);
+        analysisResult = fallback.response;
+        savedRecord = fallback.recordItem;
+      }
+    } catch (err: any) {
+      console.warn('Server error, using built-in detection:', err);
+      const fallback = runClientSideAnalysis(payload);
+      analysisResult = fallback.response;
+      savedRecord = fallback.recordItem;
+    }
+
+    if (savedRecord && analysisResult) {
+      // Save directly into browser storage so history is NEVER lost across refreshes
+      const saveResult = saveRecordToLocalStorage(savedRecord);
+      if (!saveResult.persistedToDisk && saveResult.error) {
+        setStorageWarning('Note: Your browser storage is restricted or disabled, so this check was saved in memory for this session.');
+      } else {
+        setStorageWarning(null);
       }
 
-      // 2. If server endpoint is not found (e.g. Vercel 404 or static hosting), run local analysis
-      console.log('[App] Server endpoint was not available, running built-in detection system.');
-      const localAnalysis = runClientSideAnalysis(payload);
-      setCurrentResult(localAnalysis);
+      // Update in-memory state immediately (newest first)
+      setRecords((prev) => {
+        const updated = [savedRecord!, ...prev.filter((r) => r.id !== savedRecord!.id)];
+        return updated.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      });
+
+      // Update statistics directly from updated records
+      setStats(() => {
+        const allRecords = getLocalStorageRecords();
+        return computeLocalStats(allRecords);
+      });
+
+      // Best-effort background sync to server database (fire and forget)
+      safeFetchJson('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record: savedRecord })
+      }).catch(() => {});
+
+      setCurrentResult(analysisResult);
       setActiveTab('check');
-      fetchRecords();
-    } catch (err: any) {
-      console.error('Check error:', err);
-      // Attempt local analysis before failing
-      try {
-        const localAnalysis = runClientSideAnalysis(payload);
-        setCurrentResult(localAnalysis);
-        setActiveTab('check');
-        fetchRecords();
-      } catch {
-        setError('Sorry, we couldn\'t check this advertisement right now. Please try again in a few moments.');
-      }
-    } finally {
-      setIsLoading(false);
+    } else {
+      setError('Unable to analyze this job offer. Please check your text and try again.');
     }
+
+    setIsLoading(false);
   };
 
   // Delete saved record
   const handleDeleteRecord = async (id: string) => {
     try {
-      // Delete from local storage
+      // 1. Delete from browser storage
       deleteLocalStorageRecord(id);
 
-      // Attempt to delete from server as well
-      await safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      // 2. Delete from server database if reachable
+      safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
 
-      setRecords((prev) => prev.filter((r) => r.id !== id));
-      fetchRecords();
+      // 3. Update React state immediately
+      setRecords((prev) => {
+        const updated = prev.filter((r) => r.id !== id);
+        setStats(computeLocalStats(updated));
+        return updated;
+      });
     } catch (err) {
       console.error('Failed to delete record:', err);
+    }
+  };
+
+  // Clear all saved records
+  const handleClearAllHistory = async () => {
+    try {
+      clearAllLocalStorageRecords();
+      setRecords([]);
+      setStats(computeLocalStats([]));
+
+      // Best effort sync clear to server so page refresh does not resurrect records
+      safeFetchJson('/api/history?clearAll=true', { method: 'DELETE' }).catch(() => {});
+    } catch (err) {
+      console.error('Failed to clear history:', err);
     }
   };
 
   // Toggle bookmark on record
   const handleToggleStar = async (id: string) => {
     try {
-      // Toggle in local storage
       toggleLocalStorageStar(id);
 
-      // Attempt to update on server as well
-      await safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'PATCH' });
+      safeFetchJson(`/api/history?id=${encodeURIComponent(id)}`, { method: 'PATCH' }).catch(() => {});
 
       setRecords((prev) =>
         prev.map((r) =>
@@ -158,8 +232,20 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-      {/* Navigation Header */}
+    <div className="relative min-h-screen bg-[#050816] text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black overflow-x-hidden">
+      
+      {/* 1. Subtle Animated Blue-Purple Background */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Ambient Gradient Orbs */}
+        <div className="absolute -top-40 -left-40 w-96 sm:w-[550px] h-96 sm:h-[550px] rounded-full bg-cyan-600/15 blur-[120px] animate-float-orb-1" />
+        <div className="absolute top-1/3 -right-40 w-96 sm:w-[600px] h-96 sm:h-[600px] rounded-full bg-purple-600/15 blur-[140px] animate-float-orb-2" />
+        <div className="absolute -bottom-40 left-1/3 w-96 sm:w-[500px] h-96 sm:h-[500px] rounded-full bg-blue-700/10 blur-[130px] animate-float-orb-1" />
+        
+        {/* Subtle Cyber Grid Mesh Pattern */}
+        <div className="absolute inset-0 cyber-grid-bg opacity-70" />
+      </div>
+
+      {/* 2. Navigation Header */}
       <Header
         activeTab={activeTab}
         setActiveTab={(tab) => {
@@ -169,74 +255,125 @@ export default function App() {
         historyCount={records.length}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* 1. HOME TAB */}
-        {activeTab === 'home' && (
-          <HomeView
-            onCheckJob={handleAnalyze}
-            isLoading={isLoading}
-            error={error}
-            onNavigateToSafety={() => setActiveTab('safety')}
-            onNavigateToAbout={() => setActiveTab('about')}
-          />
-        )}
-
-        {/* 2. CHECK A JOB TAB */}
-        {activeTab === 'check' && (
-          <div className="space-y-8">
-            {currentResult ? (
-              <AnalysisResultView
-                result={currentResult}
-                onOpenReport={() => setShowReportModal(true)}
-                onReset={() => {
-                  setCurrentResult(null);
-                  setError(null);
-                }}
-                onToggleStar={handleToggleStar}
-                isStarred={records.find((r) => r.id === currentResult.recordId)?.is_starred === 1}
-              />
-            ) : (
-              <Analyzer
-                onAnalyze={handleAnalyze}
+      {/* 3. Main Content Area */}
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+        <AnimatePresence mode="wait">
+          {/* TAB 1: HOME */}
+          {activeTab === 'home' && (
+            <motion.div
+              key="home-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+            >
+              <HomeView
+                onCheckJob={handleAnalyze}
                 isLoading={isLoading}
                 error={error}
-                onClear={() => {
-                  setCurrentResult(null);
-                  setError(null);
-                }}
-                currentResult={null}
+                onNavigateToSafety={() => setActiveTab('safety')}
+                onNavigateToAbout={() => setActiveTab('about')}
+                onNavigateToHistory={() => setActiveTab('history')}
+                historyCount={records.length}
               />
-            )}
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* 3. PAST HISTORY TAB */}
-        {activeTab === 'history' && (
-          <HistoryView
-            records={records}
-            stats={stats}
-            onRefresh={fetchRecords}
-            onDelete={handleDeleteRecord}
-            onToggleStar={handleToggleStar}
-          />
-        )}
+          {/* TAB 2: CHECK A JOB */}
+          {activeTab === 'check' && (
+            <motion.div
+              key="check-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-8"
+            >
+              {currentResult ? (
+                <AnalysisResultView
+                  result={currentResult}
+                  onOpenReport={() => setShowReportModal(true)}
+                  onReset={() => {
+                    setCurrentResult(null);
+                    setError(null);
+                  }}
+                  onToggleStar={handleToggleStar}
+                  isStarred={records.find((r) => r.id === currentResult.recordId)?.is_starred === 1}
+                />
+              ) : (
+                <Analyzer
+                  onAnalyze={handleAnalyze}
+                  isLoading={isLoading}
+                  error={error}
+                  onClear={() => {
+                    setCurrentResult(null);
+                    setError(null);
+                  }}
+                  currentResult={null}
+                />
+              )}
+            </motion.div>
+          )}
 
-        {/* 4. SAFETY TIPS TAB */}
-        {activeTab === 'safety' && <SafetyTipsView />}
+          {/* TAB 3: PAST HISTORY */}
+          {activeTab === 'history' && (
+            <motion.div
+              key="history-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+            >
+              <HistoryView
+                records={records}
+                stats={stats}
+                storageWarning={storageWarning}
+                onRefresh={fetchRecords}
+                onDelete={handleDeleteRecord}
+                onClearAll={handleClearAllHistory}
+                onToggleStar={handleToggleStar}
+                onGoToChecker={() => {
+                  setCurrentResult(null);
+                  setActiveTab('check');
+                }}
+              />
+            </motion.div>
+          )}
 
-        {/* 5. ABOUT US TAB */}
-        {activeTab === 'about' && (
-          <AboutView
-            onGoToChecker={() => {
-              setCurrentResult(null);
-              setActiveTab('check');
-            }}
-          />
-        )}
+          {/* TAB 4: THREAT INTEL / SAFETY TIPS */}
+          {activeTab === 'safety' && (
+            <motion.div
+              key="safety-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+            >
+              <SafetyTipsView />
+            </motion.div>
+          )}
+
+          {/* TAB 5: SYSTEM INFO / ABOUT US */}
+          {activeTab === 'about' && (
+            <motion.div
+              key="about-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+            >
+              <AboutView
+                onGoToChecker={() => {
+                  setCurrentResult(null);
+                  setActiveTab('check');
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
-      {/* Printable Report Modal */}
+      {/* 4. Printable Security Report Modal */}
       {showReportModal && currentResult && (
         <ReportModal
           result={currentResult}
@@ -244,20 +381,61 @@ export default function App() {
         />
       )}
 
-      {/* Simple, Friendly Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-            <span className="font-semibold text-slate-300">
-              Fake Job &amp; Internship Scam Checker
-            </span>
-            <span className="text-slate-600">•</span>
-            <span>Free Student Safety Tool</span>
+      {/* 5. Professional Cybersecurity SaaS Footer */}
+      <footer className="relative z-10 border-t border-cyan-500/15 bg-[#050816]/95 backdrop-blur-xl py-8 text-xs text-slate-400">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b border-cyan-500/10 pb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(56,189,248,0.25)]">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="font-bold text-white text-sm">
+                  Fake Job &amp; Internship Scam Checker
+                </span>
+                <span className="block text-[11px] text-slate-400 font-mono">
+                  Cyber Threat Intelligence Engine for Students &amp; Freshers
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+              <button 
+                onClick={() => { setCurrentResult(null); setActiveTab('check'); }}
+                className="text-slate-400 hover:text-cyan-300 transition-colors"
+              >
+                Scan Offer
+              </button>
+              <button 
+                onClick={() => setActiveTab('history')}
+                className="text-slate-400 hover:text-cyan-300 transition-colors"
+              >
+                Audit Log ({records.length})
+              </button>
+              <button 
+                onClick={() => setActiveTab('safety')}
+                className="text-slate-400 hover:text-cyan-300 transition-colors"
+              >
+                Safety Playbook
+              </button>
+              <button 
+                onClick={() => setActiveTab('about')}
+                className="text-slate-400 hover:text-cyan-300 transition-colors"
+              >
+                Architecture
+              </button>
+            </div>
           </div>
 
-          <div className="text-[11px] text-slate-500">
-            Never pay money to secure a job or internship without verifying the employer.
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500 font-mono">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span className="text-slate-400">Engine Status: All Heuristic &amp; AI Systems Operational</span>
+            </div>
+
+            <div className="text-center sm:text-right text-slate-400">
+              Never remit money, registration deposits, or sensitive ID cards to secure employment.
+            </div>
           </div>
         </div>
       </footer>

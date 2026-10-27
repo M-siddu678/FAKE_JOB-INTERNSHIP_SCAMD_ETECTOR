@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initDb, insertRecord, getRecords, getRecordById, deleteRecord, toggleStar, getDatabaseStats, AnalysisRecord } from './server/db.js';
+import { initDb, insertRecord, getRecords, getRecordById, deleteRecord, toggleStar, clearAllRecords, getDatabaseStats, AnalysisRecord } from './server/db.js';
 import { runHeuristicNLPAnalysis } from './server/nlpRules.js';
 import { runAIModelClassification } from './server/aiClassifier.js';
 
@@ -71,16 +71,51 @@ async function startServer() {
       const category = req.query.category as string | undefined;
       const rawRecords = getRecords(search, category);
 
-      const parsedRecords = rawRecords.map(r => ({
-        ...r,
-        flags: JSON.parse(r.flags_json || '[]'),
-        recommendations: JSON.parse(r.recommendations_json || '[]'),
-        model_verdict: r.model_verdict_json ? JSON.parse(r.model_verdict_json) : null
-      }));
+      const parsedRecords = rawRecords
+        .filter(r => !String(r.id).startsWith('scan-demo-'))
+        .map(r => ({
+          ...r,
+          flags: JSON.parse(r.flags_json || '[]'),
+          recommendations: JSON.parse(r.recommendations_json || '[]'),
+          model_verdict: r.model_verdict_json ? JSON.parse(r.model_verdict_json) : null
+        }));
 
       res.json({ records: parsedRecords });
     } catch (err: any) {
       res.status(500).json({ error: 'Sorry, we could not load your check history. Please try again.' });
+    }
+  });
+
+  // Save / Sync History Record
+  app.post('/api/history', (req, res) => {
+    try {
+      const record = req.body?.record || req.body;
+      if (!record || !record.id) {
+        return res.status(400).json({ error: 'Valid record data with id is required.' });
+      }
+
+      insertRecord({
+        id: String(record.id),
+        timestamp: record.timestamp || new Date().toISOString(),
+        job_title: record.job_title || 'Job / Internship Offer',
+        company_name: record.company_name || 'Unspecified Company',
+        sender_info: record.sender_info || 'Direct message',
+        channel: record.channel || 'Direct Message',
+        risk_category: record.risk_category || 'Suspicious',
+        risk_score: Number(record.risk_score || 0),
+        heuristic_score: Number(record.heuristic_score || record.risk_score || 0),
+        model_score: record.model_score !== undefined ? record.model_score : null,
+        summary: record.summary || '',
+        raw_text: record.raw_text || '',
+        flags_json: typeof record.flags === 'string' ? record.flags : JSON.stringify(record.flags || []),
+        recommendations_json: typeof record.recommendations === 'string' ? record.recommendations : JSON.stringify(record.recommendations || []),
+        model_verdict_json: record.model_verdict ? JSON.stringify(record.model_verdict) : null,
+        is_starred: record.is_starred ? 1 : 0
+      });
+
+      res.json({ success: true, id: record.id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Sorry, we could not save this record.' });
     }
   });
 
@@ -104,7 +139,25 @@ async function startServer() {
     }
   });
 
-  // Delete History Record
+  // Delete History Record (by query or clearAll)
+  app.delete('/api/history', (req, res) => {
+    try {
+      if (req.query.clearAll === 'true') {
+        clearAllRecords();
+        return res.json({ success: true, message: 'All records cleared.' });
+      }
+      const id = (req.query.id as string) || req.body?.id;
+      if (!id) {
+        return res.status(400).json({ error: 'Record ID is required for deletion.' });
+      }
+      deleteRecord(id);
+      res.json({ success: true, message: 'Record deleted successfully.' });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Sorry, we could not delete this record. Please try again.' });
+    }
+  });
+
+  // Delete History Record by route parameter
   app.delete('/api/history/:id', (req, res) => {
     try {
       deleteRecord(req.params.id);
@@ -280,7 +333,8 @@ async function startServer() {
           heuristicSummary: heuristicResult.heuristicSummary
         },
         aiModelEngine: aiResult,
-        metadata
+        metadata,
+        raw_text: text
       });
     } catch (err: any) {
       console.error('Error during check:', err);
